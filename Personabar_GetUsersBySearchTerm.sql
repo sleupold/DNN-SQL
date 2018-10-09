@@ -50,6 +50,87 @@ CREATE UNIQUE NONCLUSTERED INDEX [IX_{objectQualifier}UserPortals_PortalId_IsDel
 GO
 
 
+IF EXISTS (select * from Sys.Views where object_id = object_id(N'{databaseOwner}[{objectQualifier}vw_ProfileDataTypes]'))
+    DROP VIEW {databaseOwner}[{objectQualifier}vw_ProfileDataTypes]
+GO
+
+CREATE VIEW {databaseOwner}[{objectQualifier}vw_ProfileDataTypes]
+AS
+    SELECT [EntryID] AS DataTypeID,
+           [Value]   AS TypeName,
+           [Text]    AS ControlName
+      FROM {databaseOwner}[{objectQualifier}Lists]
+     WHERE ListName = N'DataType';
+GO
+
+
+IF EXISTS (select * from Sys.Views where object_id = object_id(N'{databaseOwner}[{objectQualifier}vw_ProfileBase]'))
+    DROP VIEW {databaseOwner}[{objectQualifier}vw_ProfileBase]
+GO
+
+-- View vw_ProfileBase
+CREATE VIEW {databaseOwner}[{objectQualifier}vw_ProfileBase]
+
+AS
+    SELECT
+        UP.UserID,
+        PD.PortalID,
+        PD.PropertyName,
+        UP.PropertyValue,
+        UP.PropertyText,
+        UP.PropertyKey,
+        CASE WHEN PD.visible = 0 THEN 1
+             ELSE UP.Visibility
+        END Visibility,
+        CASE WHEN PD.visible = 1 and UP.Visibility = 3
+             THEN UP.ExtendedVisibility
+             ELSE ''
+        END ExtendedVisibility,
+        PD.Deleted,
+        PD.DataType,
+        DT.TypeName,
+        PD.PropertyDefinitionID,
+        CASE WHEN UP.LastUpdatedDate > PD.LastModifiedOnDate
+             THEN UP.LastUpdatedDate
+             ELSE PD.LastModifiedOnDate
+        END LastUpdatedDate
+    FROM {databaseOwner}[{objectQualifier}UserProfile]               AS UP
+    JOIN {databaseOwner}[{objectQualifier}ProfilePropertyDefinition] AS PD ON PD.PropertyDefinitionID = UP.PropertyDefinitionID
+    JOIN {databaseOwner}[{objectQualifier}vw_ProfileDataTypes]       AS DT ON PD.DataType = DT.DataTypeID;
+GO
+
+
+-- DNN-4361: extended to include DataTypeName and support List dataType lookup, using DNN-4362
+IF EXISTS (select * from Sys.Views where object_id = object_id(N'{databaseOwner}[{objectQualifier}vw_Profile]'))
+    DROP VIEW {databaseOwner}[{objectQualifier}vw_Profile]
+GO
+
+CREATE VIEW {databaseOwner}[{objectQualifier}vw_Profile]
+
+AS
+    SELECT
+        P.UserID,
+        P.PortalID,
+        P.PropertyName,
+        CASE
+         WHEN P.TypeName = N'List'                  THEN IsNull(L.[Text], P.PropertyValue)
+         WHEN P.TypeName IN (N'Region', N'Country') THEN IsNull(M.[Text], M.[Value])
+         WHEN IsNull(P.PropertyText, N'') = N''     THEN P.PropertyValue
+         ELSE P.PropertyText
+        END AS PropertyValue,
+        P.Visibility,
+        P.ExtendedVisibility,
+        P.Deleted,
+        P.DataType,
+        P.TypeName,
+        P.LastUpdatedDate,
+        P.PropertyDefinitionID
+    FROM      {databaseOwner}[{objectQualifier}vw_ProfileBase] AS P
+    LEFT JOIN {databaseOwner}[{objectQualifier}Lists]          AS M ON P.PropertyKey   = M.EntryID
+    LEFT JOIN {databaseOwner}[{objectQualifier}Lists]          AS L ON P.PropertyName  = L.ListName AND P.PropertyValue = L.Value;
+GO
+    
+
 IF EXISTS (SELECT * FROM sys.procedures WHERE object_id = object_id(N'{databaseOwner}[{objectQualifier}Personabar_GetUsersBySearchTerm]'))
 	DROP PROCEDURE {databaseOwner}[{objectQualifier}Personabar_GetUsersBySearchTerm]
 GO
